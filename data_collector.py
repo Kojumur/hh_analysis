@@ -4,7 +4,6 @@ import re
 import sqlalchemy as sa
 from urllib.parse import urlencode
 from tqdm import tqdm
-from hh_config import DATABASE_URL
 from time import sleep
 
 class DataCollector:
@@ -67,8 +66,22 @@ class DataCollector:
         return re.sub('<[^>]*>|&[^;]*;', '', html)
     
     @staticmethod
-    def read_database():
-        engine = sa.create_engine(DATABASE_URL)
+    def read_database(database_url):
+        '''Get vacancies' data from local postgres database
+        
+        Parameters
+        ----------
+        database_url: str
+            local postgres database's url to connect to
+        
+        Returns
+        -------
+        vacancies: pandas.DataFrame
+            all the vacancies stored in database
+        
+        '''
+        
+        engine = sa.create_engine(database_url)
         query = '''
                 SELECT * FROM vacancy
                 '''
@@ -132,7 +145,7 @@ class DataCollector:
             vacancy['experience']['name']
         )
     
-    def collect_vacancies(self, store=None):
+    def collect_vacancies(self, store=None, postgres_url=None):
         '''Collect, parse and store first 2000 (maximum possible value via API)
         vacancies correspoinding to API query in self._target_url
         
@@ -140,20 +153,19 @@ class DataCollector:
         ----------
         store: str
             how to store vacancies returned by headhunter's API
-            possible values: 'csv', 'postgres'
+            possible values: 'csv', 'postgres', else return 
+            vacancies without storing.
+        
+        postgres_url: str
+            local postgres database's url to connect to in format
+            'postgresql://{username}:{password}@{host}:{port}/{database}',
+            must be specified if store='postgres'
         
         Returns
         -------
         vacancies: pandas.DataFrame
             pandas dataframe with columns corresponding to _COLUMN_NAMES 
             and rows being vacancy's data from parse_vacancy function
-            
-        Notes
-        -----
-        store='postgres' requires a local set up PostgreSQL database with table 'vacancy' and 
-        hh_config.py file, containing database's url in format 'postgresql://{username}:{password}@{host}:{port}/{database}'
-            
-        TOFIX: возможно надо переделать способ формирования списка rows, чтобы ловить ошибки
         
         '''
         
@@ -178,7 +190,7 @@ class DataCollector:
                     sa.String(length=100), sa.Text(), sa.Text(), sa.ARRAY(sa.Text()), sa.Text(), sa.ARRAY(sa.Text()), sa.Date(), sa.Text())
             cols_dtypes = {k:v for k,v in zip(self._COLUMN_NAMES, dtypes)}
 
-            engine = sa.create_engine(DATABASE_URL)
+            engine = sa.create_engine(postgres_url)
             vacancies.to_sql('temp_vacancy', engine, if_exists='replace', dtype=cols_dtypes)
             query = '''
                     INSERT INTO vacancy
